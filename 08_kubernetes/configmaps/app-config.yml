@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-config
+  namespace: ecommerce
+data:
+  # Application configuration
+  PORT: "5000"
+  DB_HOST: "mysql-service.ecommerce.svc.cluster.local"
+  DB_PORT: "3306"
+  DB_NAME: "ecommerce_db"
+  LOG_LEVEL: "INFO"
+  API_BASE_URL: "http://localhost:5000"
+
+  # Environment
+  ENVIRONMENT: "production"
+  FLASK_ENV: "production"
+
+  # Feature flags
+  ENABLE_CART: "true"
+  ENABLE_ORDERS: "true"
+  ENABLE_ADMIN: "true"

@@ -1,0 +1,55 @@
+# Webserver role — Nginx installation and configuration
+- name: Install Nginx
+  package:
+    name: nginx
+    state: present
+
+- name: Ensure Nginx is running and enabled
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: Deploy custom Nginx config for e-commerce
+  template:
+    src: nginx_ecommerce.conf.j2
+    dest: /etc/nginx/conf.d/ecommerce.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart nginx
+
+- name: Create web root directory
+  file:
+    path: /var/www/ecommerce
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: '0755'
+
+- name: Deploy frontend (placeholder — replaced by K8s in production)
+  copy:
+    dest: /var/www/ecommerce/index.html
+    content: |
+      <!DOCTYPE html>
+      <html><body><h1>E-Commerce Platform — Nginx Serving</h1>
+      <p>Backend API: <a href="/api/">/api/</a></p>
+      </body></html>
+    owner: nginx
+    group: nginx
+    mode: '0644'
+
+- name: Ensure firewall allows HTTP/HTTPS
+  firewalld:
+    service: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - http
+    - https
+  ignore_errors: yes
+
+- name: Reload firewalld
+  firewalld:
+    state: reloaded
+  ignore_errors: yes

@@ -1,0 +1,81 @@
+# App Deployment role — Docker, container runtime, app setup
+- name: Install Docker
+  package:
+    name:
+      - docker
+      - docker-ce
+      - docker-ce-cli
+    state: present
+  ignore_errors: yes
+
+- name: Install Docker via official script (fallback)
+  shell: curl -fsSL https://get.docker.com | sh
+  args:
+    creates: /usr/bin/docker
+  ignore_errors: yes
+
+- name: Ensure Docker is running and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Add appuser to docker group
+  user:
+    name: apprunner
+    groups: docker
+    append: yes
+
+- name: Install kubectl (Kubernetes CLI)
+  get_url:
+    url: https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
+  ignore_errors: yes
+
+- name: Install AWS CLI
+  pip:
+    name: awscli
+    state: present
+
+- name: Ensure application directory exists
+  file:
+    path: /opt/ecommerce
+    state: directory
+    mode: '0755'
+
+- name: Deploy app environment file
+  copy:
+    dest: /opt/ecommerce/.env
+    content: |
+      DB_HOST={{ db_host | default('db') }}
+      DB_PORT={{ db_port | default('3306') }}
+      DB_USER={{ db_user }}
+      DB_PASSWORD={{ db_password }}
+      DB_NAME={{ db_name }}
+      PORT={{ app_port }}
+    mode: '0600'
+    owner: apprunner
+    group: appuser
+
+- name: Deploy application as systemd service (for VM deployment)
+  template:
+    src: ecommerce-app.service.j2
+    dest: /etc/systemd/system/ecommerce-app.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload systemd
+
+- name: Ensure app service is running
+  service:
+    name: ecommerce-app
+    state: started
+    enabled: yes
+  ignore_errors: yes
+
+- name: Verify app is running
+  wait_for:
+    port: "{{ app_port }}"
+    timeout: 30
+  ignore_errors: yes

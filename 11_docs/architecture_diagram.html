@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2d3140;
+    --text: #e1e4ed;
+    --muted: #8b92a5;
+    --accent: #60a5fa;
+    --green: #34d399;
+    --orange: #fbbf24;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --cyan: #22d3ee;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    min-width: 1200px;
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 28px;
+    margin-bottom: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 10px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .layer {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .layer:last-child { border-bottom: none; }
+  .layer-label {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+  .nodes {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .node {
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    text-align: center;
+    min-width: 120px;
+    cursor: default;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .node .icon {
+    font-size: 18px;
+    margin-bottom: 3px;
+  }
+  .node.aws { border-color: var(--orange); }
+  .node.aws .icon { color: var(--orange); }
+  .node.k8s { border-color: var(--accent); }
+  .node.k8s .icon { color: var(--accent); }
+  .node.app { border-color: var(--green); }
+  .node.app .icon { color: var(--green); }
+  .node.db { border-color: var(--purple); }
+  .node.db .icon { color: var(--purple); }
+  .node.mon { border-color: var(--cyan); }
+  .node.mon .icon { color: var(--cyan); }
+  .node.security { border-color: var(--red); }
+  .node.security .icon { color: var(--red); }
+  .node.bastion { border-color: #fb923c; }
+  .node.bastion .icon { color: #fb923c; }
+
+  .arrow-row {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+    font-size: 16px;
+    color: var(--muted);
+  }
+
+  .annotations {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .annotations span {
+    color: var(--muted);
+  }
+  .annotations strong {
+    color: var(--text);
+  }
+
+  .flow-section {
+    margin-top: 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .flow-section h3 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+  .flow-steps {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .flow-step {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .flow-arrow {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .phase-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .phase-1 { background: rgba(96,165,250,0.15); color: var(--accent); }
+  .phase-2 { background: rgba(52,211,153,0.15); color: var(--green); }
+  .phase-3 { background: rgba(251,191,36,0.15); color: var(--orange); }
+  .phase-5 { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .phase-6 { background: rgba(34,211,238,0.15); color: var(--cyan); }
+  .phase-7 { background: rgba(248,113,113,0.15); color: var(--red); }
+  .phase-8 { background: rgba(251,191,36,0.15); color: var(--orange); }
+  .phase-9 { background: rgba(34,211,238,0.15); color: var(--cyan); }
+  .phase-10 { background: rgba(248,113,113,0.15); color: var(--red); }
+
+  .footer {
+    margin-top: 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Cloud &amp; DevOps Capstone — E-Commerce Platform Architecture</h1>
+  <p class="subtitle">Production-Ready Cloud Application Platform &bull; AWS &bull; Kubernetes &bull; Terraform &bull; Ansible &bull; Jenkins CI/CD</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>AWS Infrastructure</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Kubernetes Cluster</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Application Pods</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Database</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Monitoring</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Security</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>Bastion / Access</div>
+  </div>
+
+  <div class="diagram">
+
+    <!-- INTERNET / DNS -->
+    <div class="layer">
+      <span class="layer-label">Internet / DNS</span>
+      <div class="nodes">
+        <div class="node security"><div class="icon">🌐</div>Route 53<br/>shop.example.com</div>
+      </div>
+    </div>
+    <div class="arrow-row">⬇ HTTPS (443)</div>
+
+    <!-- ALB -->
+    <div class="layer">
+      <span class="layer-label">Load Balancer</span>
+      <div class="nodes">
+        <div class="node aws"><div class="icon">⚖️</div>Application<br/>Load Balancer<br/>ALB + SSL</div>
+      </div>
+    </div>
+    <div class="arrow-row">⬇</div>
+
+    <!-- SUBNETS -->
+    <div class="layer">
+      <span class="layer-label">Public Subnet</span>
+      <div class="nodes">
+        <div class="node bastion"><div class="icon">🖥️</div>Bastion Host<br/>EC2 t2.micro<br/>SSH (2222)</div>
+        <div class="node aws"><div class="icon">🔀</div>NAT Gateway<br/>(outbound for<br/>private subnet)</div>
+      </div>
+    </div>
+    <div class="arrow-row">⬇ SSH via Bastion &nbsp;&nbsp;|&nbsp;&nbsp; ⬇ Private subnet NAT</div>
+
+    <div class="layer">
+      <span class="layer-label">Private Subnet — Kubernetes Cluster</span>
+      <div class="nodes">
+        <div class="node k8s"><div class="icon">🎮</div>K8s Master<br/>EC2 t2.micro<br/>apiserver:6443</div>
+        <div class="node k8s"><div class="icon">🏗️</div>K8s Worker 1<br/>EC2 t3.micro<br/>App + Frontend Pods</div>
+        <div class="node k8s"><div class="icon">🏗️</div>K8s Worker 2<br/>EC2 t3.micro<br/>DB + App Pods<br/>+ EBS PV</div>
+      </div>
+    </div>
+
+    <!-- INGRESS inside K8s -->
+    <div class="arrow-row" style="padding-top:6px;">⬇</div>
+    <div class="layer">
+      <span class="layer-label">K8s Ingress / Services</span>
+      <div class="nodes">
+        <div class="node k8s"><div class="icon">🚪</div>Ingress (Nginx)<br/>shop.example.com<br/>/api → backend<br/>/ → frontend</div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <span style="display:flex;gap:8px;align-items:center;">
+        ⬇ <span style="color:var(--green);font-size:11px;">Frontend</span>
+        <div class="node app"><div class="icon">🖥️</div>Frontend Service<br/>ClusterIP:80<br/>Nginx + static</div>
+      </div>
+      &nbsp;&nbsp;&nbsp;
+      <span style="display:flex;gap:8px;align-items:center;">
+        ⬇ <span style="color:var(--accent);font-size:11px;">Backend</span>
+        <div class="node app"><div class="icon">⚙️</div>Backend Service<br/>ClusterIP:5000<br/>Flask REST API</div>
+      </div>
+    </span>
+    </div>
+
+    <div class="arrow-row">
+      <span style="display:flex;gap:8px;align-items:center;">
+        Backend ⬇
+        <div class="node db"><div class="icon">🗄️</div>MySQL Service<br/>ClusterIP:3306<br/>StatefulSet</div>
+      </div>
+      &nbsp;&nbsp;
+      <span style="display:flex;gap:8px;align-items:center;">
+        Backend ⬇
+        <div class="node db"><div class="icon">💾</div>MySQL StatefulSet<br/>EBS PVC (10Gi)</div>
+      </div>
+    </span>
+    </div>
+
+  </div>
+
+  <!-- AWS Managed Services -->
+  <div class="annotations" style="margin-top:16px;">
+    <span><strong>AWS Managed Services:</strong></span>
+    <span class="node aws" style="display:inline-block;padding:4px 10px;background:transparent;border:none;font-size:11px;cursor:default;"><span class="icon" style="font-size:14px;">🪣</span>S3 (product images, encrypted, versioned)</span>
+    <span class="node mon" style="display:inline-block;padding:4px 10px;background:transparent;border:none;font-size:11px;cursor:default;"><span class="icon" style="font-size:14px;">📊</span>CloudWatch (metrics, logs, alarms)</span>
+    <span class="node security" style="display:inline-block;padding:4px 10px;background:transparent;border:none;font-size:11px;cursor:default;"><span class="icon" style="font-size:14px;">🔒</span>AWS Backup (EBS snapshots)</span>
+    <span class="node security" style="display:inline-block;padding:4px 10px;background:transparent;border:none;font-size:11px;cursor:default;"><span class="icon" style="font-size:14px;">👤</span>IAM (least-privilege users, roles, policies)</span>
+  </div>
+
+  <!-- Phases mapped to architecture -->
+  <div class="flow-section">
+    <h3>🔧 Architecture → Capstone Phases Mapping</h3>
+    <div class="flow-steps">
+      <div class="flow-step">Linux VM (RHCSA)<span class="phase-tag phase-1">Phase 1</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Ansible Playbooks<span class="phase-tag phase-2">Phase 2</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">AWS VPC + EC2 + IAM<span class="phase-tag phase-3">Phase 3</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Git Repo + Branching<span class="phase-tag phase-3">Phase 4</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Jenkins CI/CD<span class="phase-tag phase-5">Phase 5</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Docker Images<span class="phase-tag phase-6">Phase 6</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">K8s Manifests<span class="phase-tag phase-7">Phase 7</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Terraform IaC<span class="phase-tag phase-8">Phase 8</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">Prometheus + Grafana<span class="phase-tag phase-9">Phase 9</span></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">SSL/TLS + IAM + Secrets<span class="phase-tag phase-10">Phase 10</span></div>
+    </div>
+  </div>
+
+  <!-- Network diagram inline -->
+  <div class="flow-section" style="margin-top:16px;">
+    <h3>🌐 Network Topology (AZ: us-east-1a / us-east-1b)</h3>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap;">
+┌─────────────────────────────────────────────────────────────────┐
+│  PUBLIC SUBNET (10.0.1.0/24)                                   │
+│  ┌───────────────────┐    ┌───────────────────┐                │
+│  │  Bastion EC2      │    │  NAT Gateway      │                │
+│  │  10.0.1.50        │    │  (Elastic IP)     │                │
+│  │  SSH: 2222        │    │                   │                │
+│  └────────┬──────────┘    └───────────────────┘                │
+│           │ SSH (port 2222)                                     │
+│           ▼                                                    │
+│  ┌──────────────────────────────────────────────┐              │
+│  │  Developer / Admin (via SSH tunnel)          │              │
+│  └──────────────────────────────────────────────┘              │
+├─────────────────────────────────────────────────────────────────┤
+│  PRIVATE SUBNET A (10.0.10.0/24)   PRIVATE SUBNET B (10.0.11.0/24) │
+│  ┌─────────────────────┐              ┌─────────────────────┐  │
+│  │  K8s Master         │              │  K8s Worker 1       │  │
+│  │  10.0.10.10         │◄────────────►│  10.0.11.20         │  │
+│  │  apiserver:6443     │  kubelet     │  App+Frontend Pods  │  │
+│  └─────────────────────┘              └─────────────────────┘  │
+│                                                  │              │
+│  ┌─────────────────────┐              ┌─────────────────────┐  │
+│  │  (no public IP)     │              │  K8s Worker 2       │  │
+│  │                     │              │  10.0.11.30         │  │
+│  │                     │              │  MySQL StatefulSet  │  │
+│  │                     │              │  EBS PV (10Gi)      │  │
+│  └─────────────────────┘              └─────────────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────┐              │
+│  │  K8s Services:                                │              │
+│  │  • frontend-svc: ClusterIP:80                 │              │
+│  │  • backend-svc:   ClusterIP:5000              │              │
+│  │  • mysql-svc:     ClusterIP:3306              │              │
+│  │  • Ingress:       shop.example.com            │              │
+│  │  • HPA:           backend 2→10 replicas       │              │
+│  └──────────────────────────────────────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
+    </div>
+  </div>
+
+  <div class="footer">
+    E-Commerce Capstone Project &bull; PSR Solutions Ltd &bull; Cloud &amp; DevOps Program
+  </div>
+</div>
+</body>
+</html>

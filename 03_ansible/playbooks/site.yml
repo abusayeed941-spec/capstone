@@ -1,0 +1,34 @@
+# ============================================
+# Ansible Site Playbook — E-Commerce Platform
+# Run: ansible-playbook -i inventory/hosts.ini playbooks/site.yml
+# ============================================
+
+- name: Bootstrap all servers — basic packages and config
+  hosts: all
+  become: yes
+  roles:
+    - bootstrap
+
+- name: Configure web servers
+  hosts: webservers
+  become: yes
+  roles:
+    - webserver
+
+- name: Configure database servers
+  hosts: dbservers
+  become: yes
+  roles:
+    - database
+
+- name: Deploy application
+  hosts: k8s_master:k8s_workers
+  become: yes
+  roles:
+    - app_deployment
+
+- name: Setup monitoring
+  hosts: k8s_master
+  become: yes
+  roles:
+    - monitoring

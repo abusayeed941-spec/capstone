@@ -1,0 +1,10 @@
+[Unit]
+Description=Run e-commerce health check every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=ecommerce-healthcheck.service
+
+[Install]
+WantedBy=timers.target

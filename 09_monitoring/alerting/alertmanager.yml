@@ -1,0 +1,27 @@
+# AlertManager Configuration
+global:
+  resolve_timeout: 5m
+
+# Email (configure for your SMTP)
+# route:
+#   receiver: 'email-alerts'
+#   email_configs:
+#     - to: 'your-email@gmail.com'
+#       smarthost: 'smtp.gmail.com:587'
+#       from: 'alerts@ecommerce.local'
+#       auth_username: 'your-email@gmail.com'
+#       auth_password: 'your-app-password'
+
+# Default route — log to console (for dev)
+route:
+  receiver: 'console'
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+
+receivers:
+  - name: 'console'
+    webhook_configs:
+      - url: 'http://localhost:5001/alert'
+        send_resolved: true

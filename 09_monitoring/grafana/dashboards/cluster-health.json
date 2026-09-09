@@ -1,0 +1,69 @@
+{
+  "dashboard": {
+    "title": "Kubernetes Cluster Health",
+    "tags": ["kubernetes", "cluster"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Nodes Up/Down",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {"expr": "kube_node_status_condition{condition=\"ready\",status=\"true\"}", "legendFormat": "Ready"},
+          {"expr": "kube_node_status_condition{condition=\"ready\",status=\"false\"}", "legendFormat": "Not Ready"}
+        ],
+        "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto"}
+      },
+      {
+        "id": 2,
+        "title": "CPU Usage per Node (%)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0},
+        "targets": [
+          {"expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "{{instance}}"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "percent"}}
+      },
+      {
+        "id": 3,
+        "title": "Memory Usage per Node",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 18, "y": 0},
+        "targets": [
+          {"expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "{{instance}}"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "bytes"}}
+      },
+      {
+        "id": 4,
+        "title": "Disk Usage (%)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {"expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100", "legendFormat": "{{instance}}"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "percent"}}
+      },
+      {
+        "id": 5,
+        "title": "Pod Count by Namespace",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {"expr": "count by (namespace) (kube_pod_status_phase{phase=\"Running\"})", "legendFormat": "{{namespace}}"}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "K8s API Server Latency",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {"expr": "histogram_quantile(0.95, rate(apiserver_request_duration_seconds_bucket[5m]))", "legendFormat": "p95"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "s"}}
+      }
+    ]
+  }
+}

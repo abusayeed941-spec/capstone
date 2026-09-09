@@ -1,0 +1,49 @@
+{
+  "dashboard": {
+    "title": "E-Commerce Business Metrics",
+    "tags": ["ecommerce", "business"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Orders per Hour",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {"expr": "rate(orders_created_total[1h])", "legendFormat": "Orders/hr"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "short"}}
+      },
+      {
+        "id": 2,
+        "title": "Total Revenue (last 24h)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+        "targets": [
+          {"expr": "sum(increase(order_revenue_total[24h]))", "legendFormat": "Revenue"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "USD"}}
+      },
+      {
+        "id": 3,
+        "title": "Active Carts",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {"expr": "cart_active_count", "legendFormat": "Active"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "short"}}
+      },
+      {
+        "id": 4,
+        "title": "Product Views",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "y": 0},
+        "targets": [
+          {"expr": "sum(rate(product_view_total[1h])) by (category)", "legendFormat": "{{category}}"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "short"}}
+      }
+    ]
+  }
+}

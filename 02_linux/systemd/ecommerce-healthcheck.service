@@ -1,0 +1,14 @@
+[Unit]
+Description=E-Commerce Application Health Check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ecommerce-healthcheck.sh
+User=apprunner
+Group=appuser
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

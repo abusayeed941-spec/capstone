@@ -1,0 +1,198 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = "docker.io"
+        DOCKER_IMAGE_BACKEND = "ecommerce-backend"
+        DOCKER_IMAGE_FRONTEND = "ecommerce-frontend"
+        DOCKER_TAG = "latest"
+        K8S_NAMESPACE = "ecommerce"
+        REGISTRY_CREDENTIALS = "docker-registry-creds"
+        AWS_CREDENTIALS = "aws-creds"
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            slackSend(channel: '#deployments', color: 'danger', message: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+        }
+        success {
+            slackSend(channel: '#deployments', color: 'good', message: "BUILD SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+        }
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "=== Checking out ${env.BRANCH_NAME} branch ==="
+            }
+        }
+
+        stage('Lint — Backend') {
+            steps {
+                dir('eCommerceApp/backend') {
+                    sh 'pip install flake8 > /dev/null 2>&1'
+                    sh 'flake8 --max-line-length=120 --ignore=E501,W503 app.py || true'
+                }
+            }
+        }
+
+        stage('Lint — Frontend') {
+            steps {
+                dir('eCommerceApp/frontend') {
+                    sh 'npx --yes htmlhint index.html || true'
+                }
+            }
+        }
+
+        stage('Unit Tests — Backend') {
+            steps {
+                dir('eCommerceApp/backend') {
+                    sh 'pip install -r requirements.txt > /dev/null 2>&1'
+                    sh 'python -m pytest test_app.py -v --tb=short'
+                }
+            }
+        }
+
+        stage('Build — Backend Docker Image') {
+            steps {
+                dir('eCommerceApp/backend') {
+                    script {
+                        def commit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                        env.DOCKER_TAG = "${commit}"
+                    }
+                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${DOCKER_TAG} ."
+                    sh "docker tag ${DOCKER_IMAGE_BACKEND}:${DOCKER_TAG} ${DOCKER_REGISTRY}/${DOCKER_IMAGE_BACKEND}:${DOCKER_TAG}"
+                }
+            }
+        }
+
+        stage('Build — Frontend Docker Image') {
+            steps {
+                dir('eCommerceApp/frontend') {
+                    script {
+                        def commit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    }
+                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${DOCKER_TAG} ."
+                    sh "docker tag ${DOCKER_IMAGE_FRONTEND}:${DOCKER_TAG} ${DOCKER_REGISTRY}/${DOCKER_IMAGE_FRONTEND}:${DOCKER_TAG}"
+                }
+            }
+        }
+
+        stage('Push — Backend to Registry') {
+            steps {
+                dir('eCommerceApp/backend') {
+                    withCredentials([usernamePassword(credentialsId: REGISTRY_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin"
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_BACKEND}:${DOCKER_TAG}"
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_BACKEND}:latest"
+                    }
+                }
+            }
+        }
+
+        stage('Push — Frontend to Registry') {
+            steps {
+                dir('eCommerceApp/frontend') {
+                    withCredentials([usernamePassword(credentialsId: REGISTRY_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_FRONTEND}:${DOCKER_TAG}"
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_FRONTEND}:latest"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy — Terraform (if infrastructure changed)') {
+            when {
+                expression { return env.CHANGE_ID != null }
+            }
+            steps {
+                dir('04_terraform') {
+                    withCredentials([awsAccessKeyPair(credentialsId: AWS_CREDENTIALS)]) {
+                        sh 'aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID'
+                        sh 'aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY'
+                        sh 'aws configure set region us-east-1'
+                        sh 'terraform init'
+                        sh 'terraform plan -out=tfplan -var-file=terraform.tfvars'
+                        sh 'terraform apply -auto-approve tfplan'
+                    }
+                }
+            }
+        }
+
+        stage('Deploy — Kubernetes') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: REGISTRY_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        # Configure kubectl
+                        aws eks update-kubeconfig --region us-east-1 --name ecommerce-cluster 2>/dev/null || \
+                        kubectl config use-context ecommerce-context
+
+                        # Create namespace if not exists
+                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+                        # Update image tags in deployments
+                        kubectl set image deployment/ecommerce-backend backend=${DOCKER_REGISTRY}/${DOCKER_IMAGE_BACKEND}:${DOCKER_TAG} -n ${K8S_NAMESPACE}
+                        kubectl set image deployment/ecommerce-frontend frontend=${DOCKER_REGISTRY}/${DOCKER_IMAGE_FRONTEND}:${DOCKER_TAG} -n ${K8S_NAMESPACE}
+
+                        # Apply all manifests
+                        kubectl apply -f 08_kubernetes/ -n ${K8S_NAMESPACE}
+
+                        # Wait for rollout
+                        kubectl rollout status deployment/ecommerce-backend -n ${K8S_NAMESPACE} --timeout=120s
+                        kubectl rollout status deployment/ecommerce-frontend -n ${K8S_NAMESPACE} --timeout=120s
+                    '''
+                }
+            }
+        }
+
+        stage('Smoke Tests') {
+            steps {
+                sh '''
+                    echo "=== Running Smoke Tests ==="
+                    sleep 5
+                    # Test health endpoint
+                    curl -s http://<ALB-DNS>/api/health | grep -q "healthy" || exit 1
+                    # Test products endpoint
+                    curl -s http://<ALB-DNS>/api/products | grep -q "products" || exit 1
+                    # Test frontend loads
+                    curl -s -o /dev/null -w "%{http_code}" http://<ALB-DNS>/ | grep -q "200" || exit 1
+                    echo "=== All Smoke Tests Passed ==="
+                '''
+            }
+        }
+
+        stage('Cleanup — Old Images') {
+            steps {
+                sh '''
+                    # Remove old untagged images to save disk space
+                    docker image prune -f --filter "until=24h"
+                '''
+            }
+        }
+    }
+
+    // Rollback on failure
+    post {
+        failure {
+            script {
+                echo "=== Initiating Rollback ==="
+                sh '''
+                    kubectl rollout undo deployment/ecommerce-backend -n ${K8S_NAMESPACE} 2>/dev/null || true
+                    kubectl rollout undo deployment/ecommerce-frontend -n ${K8S_NAMESPACE} 2>/dev/null || true
+                    kubectl rollout status deployment/ecommerce-backend -n ${K8S_NAMESPACE} --timeout=60s || true
+                '''
+            }
+        }
+    }
+}
