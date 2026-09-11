@@ -1,1370 +1,299 @@
-"""
-E-Commerce Platform — Flask REST API + Frontend (single app)
-All frontend routes served inline. Backend API at /api/*.
-Frontend at / (index), /cart, /admin, etc.
-"""
-
-import os
-import json
-import uuid
-from datetime import datetime, timezone
-from flask import Flask, request, jsonify, send_file, Response
+import os, json, uuid, datetime
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
-# --- Configuration ---
-DB_HOST = os.environ.get("DB_HOST", "localhost")
-DB_PORT = int(os.environ.get("DB_PORT", 3306))
-DB_USER = os.environ.get("DB_USER", "ecommerce")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "secret")
-DB_NAME = os.environ.get("DB_NAME", "ecommerce_db")
-
-# --- Products with emoji icons ---
-PRODUCTS_WITH_EMOJI = {
-    "1": "💻", "2": "📱", "3": "🎧", "4": "🪑",
-    "5": "💡", "6": "☕", "7": "📓", "8": "🖱️",
-}
-
-frontend_html = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShopOnline — E-Commerce Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        :root {
-            --primary: #6c5ce7;
-            --primary-dark: #5a4bd1;
-            --secondary: #00cec9;
-            --accent: #fd79a8;
-            --accent2: #fdcb6e;
-            --bg: #0a0a1a;
-            --card-bg: #1a1a2e;
-            --card-border: #2d2d44;
-            --text: #e0e0f0;
-            --text-muted: #8888aa;
-            --success: #00b894;
-            --danger: #e17055;
-            --gradient-1: linear-gradient(135deg, #6c5ce7, #a29bfe);
-            --gradient-2: linear-gradient(135deg, #00cec9, #55efc4);
-            --gradient-3: linear-gradient(135deg, #fd79a8, #e84393);
-            --gradient-4: linear-gradient(135deg, #fdcb6e, #f39c12);
-            --shadow: 0 8px 32px rgba(0,0,0,0.3);
-            --shadow-hover: 0 12px 48px rgba(108,92,231,0.25);
-        }
-
-        body {
-            font-family: 'Inter', 'Segoe UI', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* Animated background */
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background:
-                radial-gradient(ellipse at 20% 20%, rgba(108,92,231,0.12) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(0,206,201,0.10) 0%, transparent 50%),
-                radial-gradient(ellipse at 50% 50%, rgba(253,121,168,0.08) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Header */
-        .header {
-            background: rgba(26,26,46,0.85);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--card-border);
-            padding: 16px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            animation: slideDown 0.5s ease;
-        }
-
-        @keyframes slideDown {
-            from { transform: translateY(-100%); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .logo {
-            display: flex; align-items: center; gap: 12px;
-        }
-
-        .logo-icon {
-            width: 42px; height: 42px;
-            background: var(--gradient-1);
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px;
-            box-shadow: 0 4px 15px rgba(108,92,231,0.4);
-        }
-
-        .logo h1 {
-            font-size: 22px;
-            font-weight: 800;
-            background: var(--gradient-1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
-        }
-
-        .nav-links { display: flex; gap: 8px; }
-        .nav-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-        .nav-links a:hover {
-            color: var(--text);
-            background: rgba(108,92,231,0.15);
-        }
-        .nav-links a.active {
-            color: var(--primary);
-            background: rgba(108,92,231,0.15);
-        }
-
-        /* Container */
-        .container {
-            max-width: 1300px;
-            margin: 0 auto;
-            padding: 30px 20px;
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Section headers */
-        .section-title {
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 25px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .section-title .badge {
-            font-size: 13px;
-            font-weight: 600;
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: var(--gradient-1);
-            color: white;
-        }
-
-        /* Product Grid */
-        .product-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-            gap: 24px;
-            margin-bottom: 40px;
-        }
-
-        .product-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 24px;
-            text-align: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-            cursor: pointer;
-        }
-
-        .product-card::before {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--gradient-1);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .product-card:hover {
-            transform: translateY(-6px);
-            box-shadow: var(--shadow-hover);
-            border-color: rgba(108,92,231,0.3);
-        }
-
-        .product-card:hover::before {
-            opacity: 1;
-        }
-
-        .product-card .emoji-icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-            display: block;
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
-            transition: transform 0.3s ease;
-        }
-
-        .product-card:hover .emoji-icon {
-            transform: scale(1.1) rotate(-5deg);
-        }
-
-        .product-card h3 {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: var(--text);
-        }
-
-        .product-card .category-tag {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            padding: 3px 10px;
-            border-radius: 12px;
-            display: inline-block;
-            margin-bottom: 10px;
-        }
-
-        .cat-electronics { background: rgba(108,92,231,0.2); color: #a29bfe; }
-        .cat-furniture { background: rgba(0,206,201,0.2); color: #55efc4; }
-        .cat-appliances { background: rgba(253,121,168,0.2); color: #fd79a8; }
-        .cat-office { background: rgba(253,203,110,0.2); color: #fdcb6e; }
-
-        .product-card .price {
-            font-size: 24px;
-            font-weight: 800;
-            color: #fff;
-            margin-bottom: 4px;
-            text-shadow: 0 2px 10px rgba(108,92,231,0.3);
-        }
-
-        .product-card .price .currency {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-muted);
-            margin-right: 2px;
-        }
-
-        .product-card .stock {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-        }
-
-        .stock-dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .stock-high { background: var(--success); }
-        .stock-medium { background: var(--accent2); }
-        .stock-low { background: var(--danger); }
-
-        .product-card .btn-add {
-            padding: 10px 28px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            font-family: inherit;
-            transition: all 0.3s ease;
-            background: var(--gradient-1);
-            color: white;
-            width: 100%;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .product-card .btn-add::after {
-            content: "";
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 0; height: 0;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            transition: width 0.4s ease, height 0.4s ease;
-        }
-
-        .product-card .btn-add:active::after {
-            width: 200px; height: 200px;
-        }
-
-        .product-card .btn-add:hover {
-            transform: scale(1.03);
-            box-shadow: 0 4px 20px rgba(108,92,231,0.4);
-        }
-
-        .product-card .btn-add:active {
-            transform: scale(0.97);
-        }
-
-        /* Cart Section */
-        .cart-section {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 28px;
-            margin-top: 30px;
-            box-shadow: var(--shadow);
-            animation: fadeInUp 0.5s ease;
-        }
-
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .cart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid var(--card-border);
-        }
-
-        .cart-header h2 {
-            font-size: 22px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .cart-count-badge {
-            background: var(--gradient-3);
-            color: white;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 12px;
-        }
-
-        .cart-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .cart-table th {
-            text-align: left;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-muted);
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--card-border);
-        }
-
-        .cart-table td {
-            padding: 12px;
-            border-bottom: 1px solid rgba(45,45,68,0.5);
-            vertical-align: middle;
-        }
-
-        .cart-item-name {
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .cart-item-emoji {
-            font-size: 24px;
-        }
-
-        .cart-item-price {
-            font-weight: 700;
-            color: #fff;
-        }
-
-        .cart-item-qty {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .qty-btn {
-            width: 28px; height: 28px;
-            border: 1px solid var(--card-border);
-            background: rgba(108,92,231,0.1);
-            color: var(--text);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        .qty-btn:hover {
-            background: rgba(108,92,231,0.25);
-            border-color: var(--primary);
-        }
-
-        .qty-value {
-            font-weight: 600;
-            min-width: 24px;
-            text-align: center;
-        }
-
-        .cart-item-total {
-            font-weight: 700;
-            color: #fff;
-            font-size: 15px;
-        }
-
-        .btn-remove {
-            background: rgba(225,112,85,0.15);
-            color: var(--danger);
-            border: 1px solid rgba(225,112,85,0.3);
-            border-radius: 6px;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        .btn-remove:hover {
-            background: rgba(225,112,85,0.25);
-            border-color: var(--danger);
-        }
-
-        .cart-summary {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(108,92,231,0.08);
-            border-radius: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .cart-total-label {
-            font-size: 16px;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .cart-total-value {
-            font-size: 32px;
-            font-weight: 800;
-            color: #fff;
-            text-shadow: 0 2px 10px rgba(108,92,231,0.3);
-        }
-
-        .btn-checkout {
-            padding: 14px 32px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 700;
-            font-family: inherit;
-            background: var(--gradient-2);
-            color: #0a0a1a;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(0,206,201,0.3);
-        }
-
-        .btn-checkout:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(0,206,201,0.4);
-        }
-
-        .btn-checkout:active {
-            transform: translateY(0);
-        }
-
-        .btn-checkout:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Alert */
-        .alert {
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            font-weight: 500;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .alert-success {
-            background: rgba(0,184,148,0.15);
-            color: #55efc4;
-            border: 1px solid rgba(0,184,148,0.3);
-        }
-
-        .alert-error {
-            background: rgba(225,112,85,0.15);
-            color: #e17055;
-            border: 1px solid rgba(225,112,85,0.3);
-        }
-
-        /* Order Form */
-        .order-form {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(0,206,201,0.06);
-            border-radius: 12px;
-            border: 1px solid rgba(0,206,201,0.15);
-        }
-
-        .order-form h3 {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #55efc4;
-        }
-
-        .order-form textarea {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid var(--card-border);
-            border-radius: 8px;
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 14px;
-            resize: vertical;
-            min-height: 80px;
-            transition: border-color 0.2s ease;
-        }
-
-        .order-form textarea:focus {
-            outline: none;
-            border-color: var(--secondary);
-        }
-
-        .btn-place-order {
-            margin-top: 12px;
-            padding: 12px 28px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: 700;
-            font-family: inherit;
-            background: var(--gradient-3);
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(253,121,168,0.3);
-        }
-
-        .btn-place-order:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(253,121,168,0.4);
-        }
-
-        /* Admin Panel */
-        .admin-panel {
-            margin-top: 30px;
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 28px;
-            box-shadow: var(--shadow);
-            animation: fadeInUp 0.5s ease;
-        }
-
-        .admin-panel h2 {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .admin-panel h2 .icon {
-            font-size: 24px;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid var(--card-border);
-            border-radius: 10px;
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 14px;
-            transition: all 0.2s ease;
-        }
-
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: rgba(108,92,231,0.08);
-            box-shadow: 0 0 0 3px rgba(108,92,231,0.15);
-        }
-
-        .form-group select {
-            cursor: pointer;
-        }
-
-        .form-group select option {
-            background: var(--card-bg);
-            color: var(--text);
-        }
-
-        .btn-admin {
-            padding: 12px 28px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: 700;
-            font-family: inherit;
-            background: var(--gradient-4);
-            color: #1a1a2e;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(253,203,110,0.3);
-            width: 100%;
-        }
-
-        .btn-admin:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(253,203,110,0.4);
-        }
-
-        /* Order History */
-        .order-history {
-            margin-top: 20px;
-        }
-
-        .order-item {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            animation: fadeInUp 0.4s ease;
-        }
-
-        .order-id {
-            font-weight: 700;
-            font-size: 16px;
-            color: #fff;
-        }
-
-        .order-total {
-            font-size: 20px;
-            font-weight: 800;
-            color: #55efc4;
-            text-shadow: 0 2px 10px rgba(0,206,201,0.2);
-        }
-
-        .order-status {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 10px;
-            background: rgba(253,203,110,0.15);
-            color: #fdcb6e;
-        }
-
-        /* Empty state */
-        .empty-cart {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-muted);
-        }
-
-        .empty-cart .icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-            opacity: 0.5;
-        }
-
-        .empty-cart p {
-            font-size: 15px;
-        }
-
-        /* Search */
-        .search-box {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 15px;
-            margin-bottom: 25px;
-            transition: all 0.3s ease;
-        }
-
-        .search-box:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: rgba(108,92,231,0.08);
-            box-shadow: 0 0 0 3px rgba(108,92,231,0.15);
-        }
-
-        .search-box::placeholder {
-            color: var(--text-muted);
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .header { padding: 12px 16px; }
-            .logo h1 { font-size: 18px; }
-            .nav-links a { padding: 6px 10px; font-size: 12px; }
-            .container { padding: 20px 12px; }
-            .product-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
-            .product-card { padding: 16px; }
-            .product-card .emoji-icon { font-size: 48px; }
-            .form-row { grid-template-columns: 1fr; }
-            .cart-summary { flex-direction: column; align-items: stretch; text-align: center; }
-            .btn-checkout { width: 100%; }
-        }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
-    </style>
-</head>
-<body>
-    <!-- Header -->
-    <header class="header">
-        <div class="logo">
-            <div class="logo-icon">🛍️</div>
-            <h1>ShopOnline</h1>
-        </div>
-        <nav class="nav-links">
-            <a href="#" class="active" onclick="showSection('products')">🛍️ Products</a>
-            <a href="#" onclick="showSection('cart')">🛒 Cart <span id="headerCartBadge" style="display:none;margin-left:4px;background:var(--accent);color:white;font-size:11px;padding:1px 6px;border-radius:8px;">0</span></a>
-            <a href="#" onclick="showSection('admin')">⚙️ Admin</a>
-        </nav>
-    </header>
-
-    <div class="container">
-        <!-- Products Section -->
-        <div id="productsSection">
-            <div class="section-title">
-                🛍️ Our Products
-                <span class="badge" id="productCount">0 items</span>
-            </div>
-            <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search products by name or category..." oninput="filterProducts(this.value)">
-            <div class="product-grid" id="productGrid"></div>
-        </div>
-
-        <!-- Cart Section -->
-        <div class="cart-section" id="cartSection" style="display:none;">
-            <div id="cartAlert"></div>
-            <div class="cart-header">
-                <h2>🛒 Your Shopping Cart <span class="cart-count-badge" id="cartCountBadge">0</span></h2>
-            </div>
-            <div id="cartEmpty" class="empty-cart">
-                <div class="icon">🛒</div>
-                <p>Your cart is empty. Add some products!</p>
-            </div>
-            <table class="cart-table" id="cartTable" style="display:none;">
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Price</th>
-                        <th>Quantity</th>
-                        <th>Total</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="cartBody"></tbody>
-            </table>
-            <div class="cart-summary" id="cartSummary" style="display:none;">
-                <div>
-                    <div class="cart-total-label">Total Amount</div>
-                    <div class="cart-total-value">$<span id="cartTotal">0.00</span></div>
-                </div>
-                <button class="btn-checkout" id="checkoutBtn" onclick="showCheckout()">Proceed to Checkout →</button>
-            </div>
-            <div class="order-form" id="orderForm" style="display:none;">
-                <h3>📋 Shipping Address</h3>
-                <textarea id="shippingAddress" placeholder="Enter your full shipping address..."></textarea>
-                <button class="btn-place-order" onclick="placeOrder()">Place Order — Confirm Purchase 🔒</button>
-            </div>
-            <div id="orderAlert"></div>
-        </div>
-
-        <!-- Order History -->
-        <div class="order-history" id="orderHistory"></div>
-
-        <!-- Admin Panel -->
-        <div class="admin-panel" id="adminSection" style="display:none;">
-            <h2><span class="icon">⚙️</span> Admin Panel — Add New Product</h2>
-            <div id="adminAlert"></div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Product Name *</label>
-                    <input type="text" id="adminName" placeholder="e.g. Wireless Keyboard">
-                </div>
-                <div class="form-group">
-                    <label>Price ($) *</label>
-                    <input type="number" id="adminPrice" step="0.01" placeholder="29.99">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Category</label>
-                    <select id="adminCategory">
-                        <option value="Electronics">💻 Electronics</option>
-                        <option value="Furniture">🪑 Furniture</option>
-                        <option value="Appliances">☕ Appliances</option>
-                        <option value="Office">📓 Office</option>
-                        <option value="General">📦 General</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Stock Quantity</label>
-                    <input type="number" id="adminStock" placeholder="100" value="100">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Image Emoji (product icon)</label>
-                <input type="text" id="adminImage" placeholder="💻 (use emoji to represent product)" value="📦">
-            </div>
-            <button class="btn-admin" onclick="addProduct()">➕ Add Product to Store</button>
-        </div>
-    </div>
-
-    <script>
-        const API_BASE = window.location.origin;
-        const SESSION_ID = "session-" + Math.random().toString(36).substr(2, 9);
-        let cart = [];
-        let orders = [];
-        let allProducts = [];
-
-        // Category emoji mapping
-        const CAT_EMOJI = {
-            "Electronics": "💻",
-            "Furniture": "🪑",
-            "Appliances": "☕",
-            "Office": "📓",
-            "General": "📦"
-        };
-
-        function getStockClass(stock) {
-            if (stock >= 100) return "stock-high";
-            if (stock >= 30) return "stock-medium";
-            return "stock-low";
-        }
-
-        function getStockLabel(stock) {
-            if (stock >= 100) return "In Stock";
-            if (stock >= 30) return "Low Stock";
-            return "Almost Gone!";
-        }
-
-        async function fetchProducts() {
-            try {
-                const resp = await fetch(API_BASE + "/api/products");
-                const data = await resp.json();
-                allProducts = data.products;
-                renderProducts(data.products);
-                document.getElementById("productCount").textContent = data.count + " items";
-            } catch (e) {
-                console.error("Failed to fetch products", e);
-            }
-        }
-
-        function renderProducts(products) {
-            const grid = document.getElementById("productGrid");
-            if (products.length === 0) {
-                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);">😕 No products found. Try a different search.</div>';
-                return;
-            }
-            grid.innerHTML = products.map(p => {
-                const emoji = PRODUCTS_WITH_EMOJI[p.id] || "📦";
-                const catClass = "cat-" + p.category.toLowerCase();
-                return `
-                <div class="product-card">
-                    <span class="emoji-icon">${emoji}</span>
-                    <h3>${p.name}</h3>
-                    <span class="category-tag ${catClass}">${CAT_EMOJI[p.category] || '📦'} ${p.category}</span>
-                    <div class="price"><span class="currency">$</span>${p.price.toFixed(2)}</div>
-                    <div class="stock">
-                        <span class="stock-dot ${getStockClass(p.stock)}"></span>
-                        ${getStockLabel(p.stock)} — ${p.stock} units
-                    </div>
-                    <button class="btn-add" onclick="addToCart('${p.id}')">🛒 Add to Cart</button>
-                </div>
-                `;
-            }).join("");
-        }
-
-        function filterProducts(query) {
-            const q = query.toLowerCase().trim();
-            if (!q) {
-                renderProducts(allProducts);
-                return;
-            }
-            const filtered = allProducts.filter(p =>
-                p.name.toLowerCase().includes(q) ||
-                p.category.toLowerCase().includes(q)
-            );
-            renderProducts(filtered);
-        }
-
-        async function addToCart(productId) {
-            const resp = await fetch(API_BASE + "/api/cart", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ session_id: SESSION_ID, product_id: productId, qty: 1 })
-            });
-            const data = await resp.json();
-            if (data.error) {
-                showAlert("cartAlert", data.error, "error");
-                return;
-            }
-            cart = data.cart;
-            updateCartUI();
-            showAlert("cartAlert", "✅ Added to cart!", "success");
-            // Scroll to cart
-            setTimeout(() => {
-                document.getElementById("cartSection").scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 200);
-        }
-
-        function updateCartUI() {
-            const totalItems = cart.reduce((s, item) => s + item.qty, 0);
-            const totalPrice = cart.reduce((s, item) => s + item.price * item.qty, 0);
-
-            // Header badge
-            const badge = document.getElementById("headerCartBadge");
-            if (totalItems > 0) {
-                badge.style.display = "inline";
-                badge.textContent = totalItems;
-            } else {
-                badge.style.display = "none";
-            }
-
-            // Cart section
-            const cartEmpty = document.getElementById("cartEmpty");
-            const cartTable = document.getElementById("cartTable");
-            const cartSummary = document.getElementById("cartSummary");
-
-            if (cart.length === 0) {
-                cartEmpty.style.display = "block";
-                cartTable.style.display = "none";
-                cartSummary.style.display = "none";
-            } else {
-                cartEmpty.style.display = "none";
-                cartTable.style.display = "";
-                cartSummary.style.display = "flex";
-
-                document.getElementById("cartBody").innerHTML = cart.map(item => {
-                    const emoji = PRODUCTS_WITH_EMOJI[item.id] || "📦";
-                    return `
-                    <tr>
-                        <td><span class="cart-item-emoji">${emoji}</span> <span class="cart-item-name">${item.name}</span></td>
-                        <td class="cart-item-price">$${item.price.toFixed(2)}</td>
-                        <td>
-                            <div class="cart-item-qty">
-                                <button class="qty-btn" onclick="updateQty('${item.id}', ${Math.max(0, item.qty - 1)})">−</button>
-                                <span class="qty-value">${item.qty}</span>
-                                <button class="qty-btn" onclick="updateQty('${item.id}', ${item.qty + 1})">+</button>
-                            </div>
-                        </td>
-                        <td class="cart-item-total">$${(item.price * item.qty).toFixed(2)}</td>
-                        <td><button class="btn-remove" onclick="removeFromCart('${item.id}')">🗑️ Remove</button></td>
-                    </tr>
-                    `;
-                }).join("");
-
-                document.getElementById("cartTotal").textContent = totalPrice.toFixed(2);
-            }
-
-            // Cart count badge
-            document.getElementById("cartCountBadge").textContent = totalItems;
-        }
-
-        async function updateQty(productId, newQty) {
-            if (newQty <= 0) {
-                await removeFromCart(productId);
-                return;
-            }
-            const resp = await fetch(API_BASE + "/api/cart", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ session_id: SESSION_ID, product_id: productId, qty: newQty })
-            });
-            const data = await resp.json();
-            if (!data.error) {
-                cart = data.cart;
-                updateCartUI();
-            }
-        }
-
-        async function removeFromCart(productId) {
-            const resp = await fetch(API_BASE + "/api/cart/" + productId + "?session_id=" + SESSION_ID, {
-                method: "DELETE"
-            });
-            const data = await resp.json();
-            cart = data.cart;
-            updateCartUI();
-        }
-
-        function showSection(section) {
-            document.getElementById("productsSection").style.display = section === "products" ? "" : "none";
-            document.getElementById("cartSection").style.display = section === "cart" ? "" : "none";
-            document.getElementById("adminSection").style.display = section === "admin" ? "" : "none";
-
-            document.querySelectorAll(".nav-links a").forEach(a => a.classList.remove("active"));
-            if (section === "products") document.querySelector('.nav-links a:nth-child(1)').classList.add("active");
-            if (section === "cart") document.querySelector('.nav-links a:nth-child(2)').classList.add("active");
-            if (section === "admin") document.querySelector('.nav-links a:nth-child(3)').classList.add("active");
-
-            if (section === "cart") updateCartUI();
-        }
-
-        function showCheckout() {
-            document.getElementById("orderForm").style.display = "block";
-            document.getElementById("checkoutBtn").style.display = "none";
-            document.getElementById("shippingAddress").focus();
-        }
-
-        async function placeOrder() {
-            const address = document.getElementById("shippingAddress").value.trim();
-            if (!address) {
-                showAlert("orderAlert", "Please enter a shipping address", "error");
-                return;
-            }
-
-            const btn = document.getElementById("checkoutBtn");
-            btn.textContent = "⏳ Processing...";
-            btn.disabled = true;
-
-            try {
-                const resp = await fetch(API_BASE + "/api/orders", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ session_id: SESSION_ID, shipping_address: address })
-                });
-                const order = await resp.json();
-                if (order.error) {
-                    showAlert("orderAlert", order.error, "error");
-                    btn.textContent = "Proceed to Checkout →";
-                    btn.disabled = false;
-                    return;
-                }
-
-                orders.push(order);
-                cart = [];
-                updateCartUI();
-                document.getElementById("orderForm").style.display = "none";
-                document.getElementById("checkoutBtn").style.display = "";
-                document.getElementById("checkoutBtn").textContent = "Proceed to Checkout →";
-                document.getElementById("checkoutBtn").disabled = false;
-                document.getElementById("shippingAddress").value = "";
-
-                showAlert("orderAlert", "🎉 Order #" + order.order_id + " placed successfully! Total: $" + order.total.toFixed(2), "success");
-                renderOrders();
-
-                // Show cart section
-                showSection("cart");
-            } catch (e) {
-                showAlert("orderAlert", "Failed to place order. Please try again.", "error");
-                btn.textContent = "Proceed to Checkout →";
-                btn.disabled = false;
-            }
-        }
-
-        function renderOrders() {
-            const div = document.getElementById("orderHistory");
-            if (orders.length === 0) {
-                div.innerHTML = "";
-                return;
-            }
-            div.innerHTML = '<h2 class="section-title" style="margin-top:30px;">📦 Order History</h2>' +
-                orders.map(o => `
-                <div class="order-item">
-                    <div>
-                        <div class="order-id">Order #${o.order_id}</div>
-                        <small style="color:var(--text-muted);">${o.created_at}</small>
-                        <div style="margin-top:6px;"><span class="order-status">● ${o.status}</span></div>
-                        ${o.shipping_address ? '<small style="color:var(--text-muted);display:block;margin-top:4px;">📍 ' + o.shipping_address + '</small>' : ''}
-                    </div>
-                    <div class="order-total">$${o.total.toFixed(2)}</div>
-                </div>
-                `).join("");
-        }
-
-        async function addProduct() {
-            const name = document.getElementById("adminName").value.trim();
-            const price = parseFloat(document.getElementById("adminPrice").value);
-            const category = document.getElementById("adminCategory").value;
-            const stock = parseInt(document.getElementById("adminStock").value) || 0;
-            const image = document.getElementById("adminImage").value.trim() || "📦";
-
-            if (!name || !price || price <= 0) {
-                showAlert("adminAlert", "Please enter a product name and valid price", "error");
-                return;
-            }
-
-            const btn = document.querySelector(".btn-admin");
-            btn.textContent = "⏳ Adding...";
-            btn.disabled = true;
-
-            try {
-                const resp = await fetch(API_BASE + "/api/admin/products", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name, price, category, stock, image })
-                });
-                const data = await resp.json();
-                // Extract emoji from image field if it's an emoji
-                if (resp.ok) {
-                    showAlert("adminAlert", "✅ Product '" + name + "' added to store!", "success");
-                    // Update our local PRODUCTS_WITH_EMOJI map
-                    if (typeof PRODUCTS_WITH_EMOJI === 'object') {
-                        // Add to products list by re-fetching
-                    }
-                    fetchProducts();
-                    // Clear form
-                    document.getElementById("adminName").value = "";
-                    document.getElementById("adminPrice").value = "";
-                    document.getElementById("adminStock").value = "100";
-                    document.getElementById("adminImage").value = "📦";
-                } else {
-                    showAlert("adminAlert", data.error || "Failed to add product", "error");
-                }
-            } catch (e) {
-                showAlert("adminAlert", "Error adding product", "error");
-            }
-
-            btn.textContent = "➕ Add Product to Store";
-            btn.disabled = false;
-        }
-
-        function showAlert(elementId, message, type) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            el.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-            setTimeout(() => { el.innerHTML = ""; }, 4000);
-        }
-
-        // Init
-        fetchProducts();
-        updateCartUI();
-    </script>
-</body>
-</html>
-'''
-
-# --- In-memory storage ---
-products_db = {
-    "products": [
-        {"id": "1", "name": "Laptop", "price": 999.99, "category": "Electronics", "stock": 50, "image": "laptop.jpg"},
-        {"id": "2", "name": "Smartphone", "price": 699.99, "category": "Electronics", "stock": 100, "image": "phone.jpg"},
-        {"id": "3", "name": "Headphones", "price": 149.99, "category": "Electronics", "stock": 200, "image": "headphones.jpg"},
-        {"id": "4", "name": "Desk Chair", "price": 299.99, "category": "Furniture", "stock": 30, "image": "chair.jpg"},
-        {"id": "5", "name": "Desk Lamp", "price": 49.99, "category": "Furniture", "stock": 150, "image": "lamp.jpg"},
-        {"id": "6", "name": "Coffee Maker", "price": 89.99, "category": "Appliances", "stock": 75, "image": "coffee.jpg"},
-        {"id": "7", "name": "Notebook", "price": 12.99, "category": "Office", "stock": 500, "image": "notebook.jpg"},
-        {"id": "8", "name": "Wireless Mouse", "price": 29.99, "category": "Electronics", "stock": 300, "image": "mouse.jpg"},
-    ]
-}
-
-carts = {}
-orders = {}
-
-def get_next_id():
-    return str(uuid.uuid4())[:8]
-
-@app.route("/api/health", methods=["GET"])
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ecommerce_data")
+PRODUCTS_FILE = os.path.join(DATA_DIR, "products.json")
+CARTS_FILE = os.path.join(DATA_DIR, "carts.json")
+ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
+
+DEFAULT_PRODUCTS = [
+    {"id": 1, "name": "Gaming Laptop", "category": "Electronics", "price": 1200.00, "stock": 10, "description": "High-performance gaming laptop with RTX 4070", "image": "💻", "rating": 4.8, "sku": "ELEC-001"},
+    {"id": 2, "name": "Wireless Earbuds", "category": "Electronics", "price": 89.99, "stock": 25, "description": "Noise-cancelling Bluetooth earbuds with 24h battery", "image": "🎧", "rating": 4.5, "sku": "ELEC-002"},
+    {"id": 3, "name": "Mechanical Keyboard", "category": "Electronics", "price": 149.99, "stock": 12, "description": "RGB backlit mechanical keyboard with hot-swappable switches", "image": "⌨️", "rating": 4.7, "sku": "ELEC-003"},
+    {"id": 4, "name": "Desk Lamp", "category": "Home & Office", "price": 39.99, "stock": 20, "description": "LED desk lamp with adjustable brightness and color temperature", "image": "💡", "rating": 4.3, "sku": "HOME-001"},
+    {"id": 5, "name": "Ergonomic Chair", "category": "Home & Office", "price": 450.00, "stock": 5, "description": "Premium ergonomic office chair with lumbar support", "image": "🪑", "rating": 4.9, "sku": "HOME-002"},
+    {"id": 6, "name": "Smartphone", "category": "Electronics", "price": 799.99, "stock": 8, "description": "Latest flagship smartphone with 120Hz display", "image": "📱", "rating": 4.6, "sku": "ELEC-004"},
+    {"id": 7, "name": "Coffee Maker", "category": "Home & Office", "price": 129.99, "stock": 15, "description": "Automatic drip coffee maker with timer", "image": "☕", "rating": 4.4, "sku": "HOME-003"},
+    {"id": 8, "name": "Notebook Set", "category": "Home & Office", "price": 24.99, "stock": 30, "description": "Premium leather-bound notebook set (5 pack)", "image": "📓", "rating": 4.1, "sku": "HOME-004"},
+    {"id": 9, "name": "USB Mouse", "category": "Electronics", "price": 29.99, "stock": 50, "description": "Ergonomic wireless USB mouse with silent clicks", "image": "🖱️", "rating": 4.2, "sku": "ELEC-005"},
+    {"id": 10, "name": "Desk Organizer", "category": "Home & Office", "price": 49.99, "stock": 18, "description": "Bamboo desk organizer with compartments for pens and supplies", "image": "📦", "rating": 4.0, "sku": "HOME-005"},
+]
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+if not os.path.exists(PRODUCTS_FILE):
+    with open(PRODUCTS_FILE, "w") as f:
+        json.dump(DEFAULT_PRODUCTS, f, indent=2)
+if not os.path.exists(CARTS_FILE):
+    with open(CARTS_FILE, "w") as f:
+        json.dump({}, f)
+if not os.path.exists(ORDERS_FILE):
+    with open(ORDERS_FILE, "w") as f:
+        json.dump([], f)
+
+def load_json(filename):
+    try:
+        with open(filename) as f:
+            return json.load(f)
+    except:
+        if "cart" in filename:
+            return {}
+        if "orders" in filename:
+            return []
+        return []
+
+def save_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=2)
+
+@app.route("/api/health")
 def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}), 200
+    return jsonify({"status": "healthy", "service": "ecommerce-api", "timestamp": datetime.datetime.utcnow().isoformat()})
 
-@app.route("/api/products", methods=["GET"])
+@app.route("/api/products")
 def get_products():
+    products = load_json(PRODUCTS_FILE)
     category = request.args.get("category")
+    min_price = request.args.get("min_price")
+    max_price = request.args.get("max_price")
+    in_stock = request.args.get("in_stock")
+    search = request.args.get("search")
     if category:
-        items = [p for p in products_db["products"] if category.lower() in p["category"].lower()]
-    else:
-        items = products_db["products"]
-    return jsonify({"products": items, "count": len(items)}), 200
+        products = [p for p in products if p.get("category") == category]
+    if min_price:
+        products = [p for p in products if float(p.get("price", 0)) >= float(min_price)]
+    if max_price:
+        products = [p for p in products if float(p.get("price", 0)) <= float(max_price)]
+    if in_stock == "true":
+        products = [p for p in products if p.get("stock", 0) > 0]
+    if search:
+        s = search.lower()
+        products = [p for p in products if s in p.get("name", "").lower() or s in p.get("description", "").lower()]
+    return jsonify(products)
 
-@app.route("/api/products/<product_id>", methods=["GET"])
+@app.route("/api/products/<int:product_id>")
 def get_product(product_id):
-    for p in products_db["products"]:
+    products = load_json(PRODUCTS_FILE)
+    for p in products:
         if p["id"] == product_id:
-            return jsonify(p), 200
+            return jsonify(p)
     return jsonify({"error": "Product not found"}), 404
 
-@app.route("/api/cart", methods=["GET"])
-def get_cart():
-    session_id = request.args.get("session_id", "default")
-    cart = carts.get(session_id, [])
-    total = sum(item["price"] * item["qty"] for item in cart)
-    return jsonify({"cart": cart, "total": total}), 200
+@app.route("/api/categories")
+def get_categories():
+    products = load_json(PRODUCTS_FILE)
+    cats = {}
+    for p in products:
+        cat = p.get("category", "Uncategorized")
+        if cat not in cats:
+            cats[cat] = {"name": cat, "count": 0, "products": []}
+        cats[cat]["count"] += 1
+        cats[cat]["products"].append(p)
+    return jsonify(list(cats.values()))
 
-@app.route("/api/cart", methods=["POST"])
-def add_to_cart():
+@app.route("/api/cart", methods=["GET", "POST"])
+def cart():
+    if request.method == "GET":
+        cid = request.args.get("cart_id", "default")
+        carts = load_json(CARTS_FILE)
+        return jsonify(carts.get(cid, {"items": [], "total": 0.0}))
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid request"}), 400
-    session_id = data.get("session_id", "default")
-    product_id = data.get("product_id")
-    qty = max(1, data.get("qty", 1))
+    cid = data.get("cart_id", str(uuid.uuid4())[:8])
+    carts = load_json(CARTS_FILE)
+    if cid not in carts:
+        carts[cid] = {"items": [], "total": 0.0}
+    existing_items = {i["product_id"]: i for i in carts[cid]["items"]}
+    for item in data.get("items", []):
+        if item["product_id"] in existing_items:
+            existing_items[item["product_id"]]["quantity"] = item.get("quantity", 1)
+        else:
+            existing_items[item["product_id"]] = item
+    carts[cid]["items"] = list(existing_items.values())
+    carts[cid]["total"] = sum(i.get("price", 0) * i.get("quantity", 1) for i in carts[cid]["items"])
+    save_json(CARTS_FILE, carts)
+    return jsonify({"cart_id": cid, "cart": carts[cid]})
 
-    product = None
-    for p in products_db["products"]:
-        if p["id"] == product_id:
-            product = p
-            break
-    if not product:
-        return jsonify({"error": "Product not found"}), 404
-    if product["stock"] < qty:
-        return jsonify({"error": "Insufficient stock"}), 400
-
-    cart = carts.get(session_id, [])
-    for item in cart:
-        if item["id"] == product_id:
-            item["qty"] += qty
-            break
-    else:
-        cart.append({"id": product["id"], "name": product["name"], "price": product["price"], "qty": qty, "image": product["image"]})
-
-    carts[session_id] = cart
-    total = sum(item["price"] * item["qty"] for item in cart)
-    return jsonify({"cart": cart, "total": total}), 200
-
-@app.route("/api/cart/<product_id>", methods=["DELETE"])
-def remove_from_cart(product_id):
-    session_id = request.args.get("session_id", "default")
-    cart = carts.get(session_id, [])
-    carts[session_id] = [item for item in cart if item["id"] != product_id]
-    total = sum(item["price"] * item["qty"] for item in carts[session_id])
-    return jsonify({"cart": carts[session_id], "total": total}), 200
-
-@app.route("/api/orders", methods=["POST"])
-def create_order():
+@app.route("/api/checkout", methods=["POST"])
+def checkout():
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid request"}), 400
-    session_id = data.get("session_id", "default")
-    cart = carts.get(session_id, [])
-    if not cart:
+    cid = data.get("cart_id")
+    carts = load_json(CARTS_FILE)
+    cart = carts.get(cid, {"items": [], "total": 0.0})
+    if not cart["items"]:
         return jsonify({"error": "Cart is empty"}), 400
-
-    order_id = get_next_id()
-    total = sum(item["price"] * item["qty"] for item in cart)
+    products = load_json(PRODUCTS_FILE)
     order = {
-        "order_id": order_id,
-        "session_id": session_id,
-        "items": cart,
-        "total": total,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "order_id": str(uuid.uuid4())[:12].upper(),
+        "items": cart["items"],
+        "total": cart["total"],
+        "customer_email": data.get("customer_email", ""),
         "shipping_address": data.get("shipping_address", ""),
+        "status": "confirmed",
+        "created_at": datetime.datetime.utcnow().isoformat(),
     }
-    orders[order_id] = order
-    carts[session_id] = []
-    return jsonify(order), 201
+    orders = load_json(ORDERS_FILE)
+    orders.append(order)
+    for item in order["items"]:
+        for p in products:
+            if p["id"] == item["product_id"]:
+                p["stock"] = max(0, p["stock"] - item.get("quantity", 1))
+    save_json(PRODUCTS_FILE, products)
+    save_json(ORDERS_FILE, orders)
+    carts[cid] = {"items": [], "total": 0.0}
+    save_json(CARTS_FILE, carts)
+    return jsonify({"success": True, "order": order})
 
-@app.route("/api/orders/<order_id>", methods=["GET"])
-def get_order(order_id):
-    order = orders.get(order_id)
-    if not order:
-        return jsonify({"error": "Order not found"}), 404
-    return jsonify(order), 200
+@app.route("/api/orders")
+def get_orders():
+    return jsonify(load_json(ORDERS_FILE))
 
-@app.route("/api/admin/products", methods=["POST"])
-def admin_add_product():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid request"}), 400
-    new_product = {
-        "id": get_next_id(),
-        "name": data.get("name"),
-        "price": float(data.get("price", 0)),
-        "category": data.get("category", "General"),
-        "stock": int(data.get("stock", 0)),
-        "image": data.get("image", "default.jpg"),
-    }
-    products_db["products"].append(new_product)
-    return jsonify(new_product), 201
+@app.route("/api/admin/products", methods=["GET", "POST", "PUT", "DELETE"])
+def admin_products():
+    if request.method == "GET":
+        return jsonify(load_json(PRODUCTS_FILE))
+    elif request.method == "POST":
+        data = request.get_json()
+        products = load_json(PRODUCTS_FILE)
+        max_id = max((p["id"] for p in products), default=0)
+        new_product = {**data, "id": max_id + 1}
+        products.append(new_product)
+        save_json(PRODUCTS_FILE, products)
+        return jsonify(new_product), 201
+    elif request.method == "PUT":
+        data = request.get_json()
+        products = load_json(PRODUCTS_FILE)
+        for i, p in enumerate(products):
+            if p["id"] == data.get("id"):
+                products[i] = {**p, **data}
+                save_json(PRODUCTS_FILE, products)
+                return jsonify(products[i])
+        return jsonify({"error": "Product not found"}), 404
+    elif request.method == "DELETE":
+        pid = request.args.get("id")
+        products = load_json(PRODUCTS_FILE)
+        filtered = [p for p in products if str(p["id"]) != str(pid)]
+        if len(filtered) < len(products):
+            save_json(PRODUCTS_FILE, filtered)
+            return jsonify({"success": True, "deleted_id": pid})
+        return jsonify({"error": "Product not found"}), 404
 
-@app.route("/api/admin/products", methods=["GET"])
-def admin_list_products():
-    return jsonify(products_db), 200
-
-# --- Frontend routes ---
-@app.route("/", methods=["GET"])
-@app.route("/index.html", methods=["GET"])
+@app.route("/")
 def index():
-    return Response(frontend_html, mimetype="text/html")
+    return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PSR E-Commerce</title>
+<style>
+:root{--bg1:#0d0d1a;--bg2:#1a1a2e;--bgc:#252540;--ac:#00d4ff;--ac3:#7c3aed;--tp:#e8e8f0;--ts:#a0a0b8;--sc:#10b981;--dc:#ef4444;--bd:#2a2a45}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg1);color:var(--tp);min-height:100vh;display:flex;flex-direction:column}
+.hero{background:linear-gradient(135deg,#1a1a2e,#252540,#1a1a2e);padding:2.5rem 2rem;text-align:center;border-bottom:1px solid var(--bd);position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 30% 50%,rgba(0,212,255,.08) 0%,transparent 60%),radial-gradient(circle at 70% 50%,rgba(124,58,237,.06) 0%,transparent 60%);animation:hg 8s ease-in-out infinite alternate}
+@keyframes hg{0%{transform:translate(0,0)}100%{transform:translate(2%,-2%)}}
+.hero h1{font-size:2.2rem;margin-bottom:.4rem;background:linear-gradient(90deg,var(--ac),var(--ac3));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{color:var(--ts);font-size:1rem}
+.hb{display:inline-block;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.4);padding:.25rem .9rem;border-radius:20px;color:var(--ac3);font-size:.8rem;margin-bottom:.8rem}
+.c{max-width:1200px;margin:0 auto;padding:1.5rem;flex:1}
+.hd{display:flex;justify-content:space-between;align-items:center;padding:.8rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100}
+.lg{font-size:1.3rem;font-weight:700;color:var(--ac);display:flex;align-items:center;gap:.4rem}
+.lg span{background:linear-gradient(90deg,var(--ac),#ff6b35);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.ha{display:flex;gap:.6rem;align-items:center}
+.sb{background:var(--bgc);border:1px solid var(--bd);border-radius:6px;padding:.4rem .8rem;color:var(--tp);width:200px;font-size:.85rem;outline:none}
+.sb:focus{border-color:var(--ac)}
+.cb{background:var(--bgc);border:1px solid var(--ac);color:var(--ac);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:.4rem}
+.cb:hover{background:var(--ac);color:var(--bg1)}
+.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-top:1rem}
+.pc{background:var(--bgc);border:1px solid var(--bd);border-radius:10px;overflow:hidden;transition:all .3s;cursor:pointer}
+.pc:hover{transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,212,255,.12);border-color:var(--ac)}
+.pi{height:100px;background:linear-gradient(135deg,var(--bg2),var(--bgc));display:flex;align-items:center;justify-content:center;font-size:2.5rem}
+.pii{padding:.8rem}
+.pcat{font-size:.7rem;color:var(--ac3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.2rem;font-weight:600}
+.pn{font-size:.9rem;font-weight:600;margin-bottom:.2rem}
+.pp{font-size:1.1rem;font-weight:700;color:var(--ac)}
+.ps{font-size:.75rem;margin-top:.2rem}
+.si{color:var(--sc)}.sl{color:#f59e0b}.so{color:var(--dc)}
+.pa{display:flex;gap:.4rem;margin-top:.5rem}
+.b{padding:.4rem .8rem;border-radius:6px;border:none;cursor:pointer;font-size:.8rem;font-weight:500}
+.bp{background:linear-gradient(135deg,var(--ac),var(--ac3));color:#fff}
+.bp:hover{transform:scale(1.02)}
+.cp{position:fixed;top:0;right:0;width:350px;height:100vh;background:var(--bg2);border-left:1px solid var(--ac);transform:translateX(100%);transition:transform .3s;z-index:200;box-shadow:-4px 0 20px rgba(0,0,0,.4)}
+.cp.open{transform:translateX(0)}
+.ch{padding:.8rem 1.2rem;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
+.ch h3{color:var(--ac)}
+.cc{background:none;border:none;color:var(--ts);font-size:1.3rem;cursor:pointer}
+.cc:hover{color:var(--dc)}
+.ci{padding:.8rem;max-height:65vh;overflow-y:auto}
+.citem{display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--bd);align-items:center}
+.cii{width:35px;height:35px;background:var(--bgc);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+.cn{font-size:.8rem;font-weight:500}
+.cp2{font-size:.75rem;color:var(--ac)}
+.cq{display:flex;gap:.2rem}
+.qb{width:20px;height:20px;border-radius:3px;border:1px solid var(--bd);background:var(--bgc);color:var(--tp);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.8rem}
+.qb:hover{border-color:var(--ac);color:var(--ac)}
+.cf{padding:.8rem 1.2rem;border-top:1px solid var(--bd);background:var(--bg1);position:absolute;bottom:0;left:0;right:0}
+.ct{display:flex;justify-content:space-between;margin-bottom:.5rem;font-size:1rem}
+.ct span:first-child{color:var(--ts)}
+.ct span:last-child{color:var(--ac);font-weight:700}
+.ce{text-align:center;padding:1.5rem;color:var(--ts)}
+.ts{display:flex;gap:.4rem;margin-bottom:1rem}
+.tb{background:var(--bgc);border:1px solid var(--bd);padding:.5rem 1.2rem;border-radius:6px;cursor:pointer;color:var(--ts);font-size:.85rem}
+.tb:hover{border-color:var(--ac);color:var(--ac)}
+.tb.active{background:var(--ac);color:var(--bg1);border-color:var(--ac)}
+.tc{display:none}
+.tc.active{display:block}
+.cs{margin-top:1.5rem;padding:1.2rem;background:var(--bgc);border:1px solid var(--bd);border-radius:10px}
+.cs h3{color:var(--ac);margin-bottom:.8rem;font-size:1rem}
+.cr{display:flex;gap:.8rem;margin-bottom:.8rem}
+.cr label{min-width:80px;color:var(--ts);font-size:.85rem}
+.cr input{flex:1;background:var(--bg2);border:1px solid var(--bd);border-radius:5px;padding:.4rem .6rem;color:var(--tp);font-size:.85rem;outline:none}
+.cr input:focus{border-color:var(--ac)}
+.cs2{display:flex;justify-content:space-between;padding:.8rem;background:var(--bg2);border-radius:6px;margin-top:.8rem}
+.cs2 .t{font-size:1.1rem;color:var(--ac);font-weight:700}
+.oc{background:var(--bgc);border:1px solid var(--bd);border-radius:10px;padding:1rem;margin-bottom:.8rem}
+.oid{font-size:1rem;font-weight:600;color:var(--ac)}
+.oi{margin-top:.5rem}
+.oii{display:flex;justify-content:space-between;padding:.2rem 0;font-size:.8rem}
+.ot{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--bd);text-align:right}
+.st{display:inline-block;padding:.15rem .6rem;border-radius:10px;font-size:.7rem;font-weight:500;margin-top:.4rem}
+.sconf{background:rgba(16,185,129,.2);color:var(--sc)}
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--sc);color:#fff;padding:.5rem 1rem;border-radius:6px;font-size:.8rem;z-index:300;opacity:0;transform:translateY(15px);transition:all .3s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.err{background:var(--dc)}
+@media(max-width:768px){.hero h1{font-size:1.6rem}.pg{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.sb{width:130px}.cp{width:100%}}
+::-webkit-scrollbar{width:5px}.::-webkit-scrollbar-track{background:var(--bg1)}.::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+</style></head><body>
+<div class="hero"><div class="hb">🔥 Summer Sale - Up to 30% Off</div><h1>PSR E-Commerce Store</h1><p>Premium products for work, play, and everything in between</p></div>
+<div class="c"><div class="hd"><div class="lg"><span>PSR</span> Solutions</div><div class="ha"><input type="text" class="sb" placeholder="Search products..." id="si" oninput="loadProducts()"><button class="cb" onclick="toggleCart()">🛒 Cart <span id="cc">0</span></button></div></div>
+<div class="ts"><button class="tb active" onclick="switchTab('products')">Products</button><button class="tb" onclick="switchTab('cart')">Cart</button><button class="tb" onclick="switchTab('checkout')">Checkout</button><button class="tb" onclick="switchTab('orders')">Orders</button></div>
+<div class="tc active" id="pt"><div id="filters"></div><div class="pg" id="pg"><div class="ce">Loading...</div></div></div>
+<div class="tc" id="ct"><div class="cs"><h3>🛒 Your Cart</h3><div id="cv"><div class="ce">Your cart is empty.</div></div><div class="cs2" id="cs2" style="display:none"><div>Cart Summary</div><div class="t" id="ctd">$0.00</div></div></div></div>
+<div class="tc" id="ckt"><div class="cs"><h3>💳 Checkout</h3><div id="ckf"><div class="cr"><label>Email</label><input type="email" id="ce" placeholder="you@example.com"></div><div class="cr"><label>Address</label><input type="text" id="ca" placeholder="123 Main St, City, State"></div><div class="cs2"><span>Total</span><span class="t" id="ckt2">$0.00</span></div><button class="b bp" style="width:100%;margin-top:.8rem" onclick="checkout()">Place Order</button></div><div id="cks" style="display:none"><div class="ce"><h3 style="color:var(--sc);margin-top:.8rem">✅ Order Placed!</h3><p style="margin-top:.4rem;color:var(--ts)">Redirecting...</p></div></div></div></div>
+<div class="tc" id="ot"><div class="cs"><h3>📦 Your Orders</h3><div id="ol"><div class="ce">Loading...</div></div></div></div></div>
+<div class="cp" id="cp"><div class="ch"><h3>🛒 Cart</h3><button class="cc" onclick="toggleCart()">✕</button></div><div class="ci" id="civ"><div class="ce">Your cart is empty.</div></div><div class="cf"><div class="ct"><span>Total</span><span id="ctp">$0.00</span></div><button class="b bp" style="width:100%" onclick="toggleCart();switchTab('checkout')">Proceed to Checkout</button></div></div>
+<div class="toast" id="toast"></div>
+<script>
+let cart={items:[],total:0},cid=localStorage.getItem("psr_cid")||"default",cat="all",srch=""
+async function api(e,m="GET",b=null){const o={method:m,headers:{"Content-Type":"application/json"}};if(b)o.body=JSON.stringify(b);return(await fetch("/api"+e,o)).json()}
+async function loadProducts(){const g=document.getElementById("pg");g.innerHTML='<div class="ce">Loading...</div>';let ep="/products?";if(cat!=="all")ep+="category="+cat+"&";if(srch)ep+="search="+encodeURIComponent(srch)+"&";ep+="in_stock=false";try{const p=await api(ep);const cs=await api("/categories");const fb=document.getElementById("filters");fb.innerHTML='<button class="tb active" onclick="setCat(\'all\',this)">All</button>';cs.forEach(c=>{const b=document.createElement("button");b.className="tb"+(cat===c.name?" active":"");b.textContent=c.name+" ("+c.count+")";b.onclick=()=>setCat(c.name,b);fb.appendChild(b)});if(!p.length){g.innerHTML='<div class="ce">No products.</div>';return}g.innerHTML=p.map(p=>{const sc=p.stock>0?(p.stock<5?"sl":"si"):"so";const st=p.stock>0?(p.stock<5?"Only "+p.stock+" left!":p.stock+" in stock"):"Out of stock";return `<div class="pc"><div class="pi">${p.image}</div><div class="pii"><div class="pcat">${p.category}</div><div class="pn">${p.name}</div><div class="pp">$${p.price.toFixed(2)}</div><div class="ps ${sc}">${st}</div><div style="margin-top:.4rem;color:var(--ts)">⭐ ${p.rating}/5.0</div><div class="pa"><button class="b bp" onclick="addToCart(${p.id})">🛒 Add to Cart</button></div></div></div>`}).join("")}catch(e){g.innerHTML='<div class="ce" style="color:var(--dc)">Error.</div>'}}
+async function setCat(c,b){cat=c;document.querySelectorAll(".tb").forEach(x=>x.classList.remove("active"));if(b)b.classList.add("active");await loadProducts()}
+async function addToCart(id){const p=await api("/products/"+id);const ex=cart.items.find(i=>i.product_id===id);if(ex)ex.quantity+=1;else cart.items.push({product_id:id,name:p.name,price:p.price,quantity:1,image:p.image});cart.total=cart.items.reduce((s,i)=>s+i.price*i.quantity,0);await api("/cart","POST",{cart_id:cid,items:cart.items});document.getElementById("cc").textContent=cart.items.reduce((s,i)=>s+i.quantity,0);renderCart();showToast("✅ "+p.name+" added!")}
+async function renderCart(){const iv=document.getElementById("civ"),tp=document.getElementById("ctp"),cs2=document.getElementById("cs2"),ctd=document.getElementById("ctd");if(!cart.items.length){iv.innerHTML='<div class="ce">Your cart is empty.</div>';tp.textContent="$0.00";cs2.style.display="none";return}iv.innerHTML=cart.items.map(i=>`<div class="citem"><div class="cii">${i.image}</div><div class="cn">${i.name}</div><div class="cp2">$${i.price.toFixed(2)} × ${i.quantity}</div><div class="cq"><button class="qb" onclick="chgQty(${i.product_id},-1)">-</button><span style="min-width:18px;text-align:center">${i.quantity}</span><button class="qb" onclick="chgQty(${i.product_id},1)">+</button></div></div>`).join("");tp.textContent="$"+cart.total.toFixed(2);ctd.textContent="$"+cart.total.toFixed(2);cs2.style.display="flex"}
+async function chgQty(id,d){const i=cart.items.find(x=>x.product_id===id);if(!i)return;i.quantity+=d;if(i.quantity<=0)cart.items=cart.items.filter(x=>x.product_id!==id);cart.total=cart.items.reduce((s,x)=>s+x.price*x.quantity,0);await api("/cart","POST",{cart_id:cid,items:cart.items});document.getElementById("cc").textContent=cart.items.reduce((s,x)=>s+x.quantity,0);renderCart()}
+async function checkout(){const e=document.getElementById("ce").value,a=document.getElementById("ca").value;if(!e||!a){showToast("Please fill in email and address",true);return}document.getElementById("ckf").style.display="none";document.getElementById("cks").style.display="block";const r=await api("/checkout","POST",{cart_id:cid,customer_email:e,shipping_address:a});if(r.success){setTimeout(()=>{switchTab("orders");showToast("🎉 Order "+r.order.order_id+" placed! $"+r.order.total.toFixed(2))},1200)}else{document.getElementById("ckf").style.display="block";document.getElementById("cks").style.display="none";showToast("Error: "+(r.error||"Failed"),true)}}
+async function loadOrders(){const l=document.getElementById("ol");l.innerHTML='<div class="ce">Loading...</div>';try{const o=await api("/orders");if(!o.length){l.innerHTML='<div class="ce">No orders yet.</div>';return}l.innerHTML=o.slice().reverse().map(o=>`<div class="oc"><div class="oid">Order #${o.order_id}</div><div style="font-size:.75rem;color:var(--ts)">${new Date(o.created_at).toLocaleDateString()}</div><div class="oi">${o.items.map(i=>`<div class="oii"><span>${i.image} ${i.name} × ${i.quantity}</span><span>$${(i.price*i.quantity).toFixed(2)}</span></div>`).join("")}</div><div class="ot"><div>Total</div><div style="font-size:1.1rem;color:var(--ac);font-weight:700">$${o.total.toFixed(2)}</div></div><span class="st sconf">${o.status}</span></div>`).join("")}catch(e){l.innerHTML='<div class="ce" style="color:var(--dc)">Error.</div>'}}
+function toggleCart(){document.getElementById("cp").classList.toggle("open");renderCart()}
+function switchTab(t){document.querySelectorAll(".tb").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tc").forEach(x=>x.classList.remove("active"));document.querySelector('.tb[onclick*="'+t+'"]').classList.add("active");document.getElementById(t+"t").classList.add("active");if(t==="products")loadProducts();if(t==="cart")renderCart();if(t==="checkout"){document.getElementById("ckt2").textContent="$"+cart.total.toFixed(2);if(!cart.total){showToast("Cart is empty!",true);switchTab("products")}}if(t==="orders")loadOrders()}
+function showToast(msg,err){const t=document.getElementById("toast");t.textContent=msg;t.className="toast"+(err?" err":"");t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2500)}
+loadProducts();renderCart();
+</script></body></html>"""
 
-@app.route("/cart", methods=["GET"])
-def cart_page():
-    return Response(frontend_html, mimetype="text/html")
-
-@app.route("/admin", methods=["GET"])
-def admin_page():
-    return Response(frontend_html, mimetype="text/html")
-
-# --- Run ---
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    ssl_cert = os.environ.get("SSL_CERT", "/etc/ssl/ecommerce/server.crt")
+    ssl_key = os.environ.get("SSL_KEY", "/etc/ssl/ecommerce/server.key")
+    context = (ssl_cert, ssl_key) if os.path.exists(ssl_cert) and os.path.exists(ssl_key) else None
+    app.run(host="0.0.0.0", port=port, ssl_context=context, threaded=True)
+
